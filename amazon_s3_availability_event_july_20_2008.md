@@ -1,0 +1,25 @@
+# Amazon S3 Availability Event: July 20, 2008
+
+We wanted to provide some additional detail about the problem we experienced on Sunday, July 20th.
+
+At 8:40am PDT, error rates in all Amazon S3 datacenters began to quickly climb and our alarms went off. By 8:50am PDT, error rates were significantly elevated and very few requests were completing successfully. By 8:55am PDT, we had multiple engineers engaged and investigating the issue. Our alarms pointed at problems processing customer requests in multiple places within the system and across multiple data centers. While we began investigating several possible causes, we tried to restore system health by taking several actions to reduce system load. We reduced system load in several stages, but it had no impact on restoring system health.
+
+At 9:41am PDT, we determined that servers within Amazon S3 were having problems communicating with each other. As background information, Amazon S3 uses a gossip protocol to quickly spread server state information throughout the system. This allows Amazon S3 to quickly route around failed or unreachable servers, among other things. When one server connects to another as part of processing a customer's request, it starts by gossiping about the system state. Only after gossip is completed will the server send along the information related to the customer request. On Sunday, we saw a large number of servers that were spending almost all of their time gossiping and a disproportionate amount of servers that had failed while gossiping. With a large number of servers gossiping and failing while gossiping, Amazon S3 wasn't able to successfully process many customer requests.
+
+At 10:32am PDT, after exploring several options, we determined that we needed to shut down all communication between Amazon S3 servers, shut down all components used for request processing, clear the system's state, and then reactivate the request processing components. By 11:05am PDT, all server-to-server communication was stopped, request processing components shut down, and the system's state cleared. By 2:20pm PDT, we'd restored internal communication between all Amazon S3 servers and began reactivating request processing components concurrently in both the US and EU.
+
+At 2:57pm PDT, Amazon S3's EU location began successfully completing customer requests. The EU location came back online before the US because there are fewer servers in the EU. By 3:10pm PDT, request rates and error rates in the EU had returned to normal. At 4:02pm PDT, Amazon S3's US location began successfully completing customer requests, and request rates and error rates had returned to normal by 4:58pm PDT.
+
+We've now determined that message corruption was the cause of the server-to-server communication problems. More specifically, we found that there were a handful of messages on Sunday morning that had a single bit corrupted such that the message was still intelligible, but the system state information was incorrect. We use MD5 checksums throughout the system, for example, to prevent, detect, and recover from corruption that can occur during receipt, storage, and retrieval of customers' objects. However, we didn't have the same protection in place to detect whether this particular internal state information had been corrupted. As a result, when the corruption occurred, we didn't detect it and it spread throughout the system causing the symptoms described above. We hadn't encountered server-to-server communication issues of this scale before and, as a result, it took some time during the event to diagnose and recover from it.
+
+During our post-mortem analysis we've spent quite a bit of time evaluating what happened, how quickly we were able to respond and recover, and what we could do to prevent other unusual circumstances like this from having system-wide impacts. Here are the actions that we're taking: (a) we've deployed several changes to Amazon S3 that significantly reduce the amount of time required to completely restore system-wide state and restart customer request processing; (b) we've deployed a change to how Amazon S3 gossips about failed servers that reduces the amount of gossip and helps prevent the behavior we experienced on Sunday; (c) we've added additional monitoring and alarming of gossip rates and failures; and, (d) we're adding checksums to proactively detect corruption of system state messages so we can log any such messages and then reject them.
+
+Finally, we want you to know that we are passionate about providing the best storage service at the best price so that you can spend more time thinking about your business rather than having to focus on building scalable, reliable infrastructure. Though we're proud of our operational performance in operating Amazon S3 for almost 2.5 years, we know that any downtime is unacceptable and we won't be satisfied until performance is statistically indistinguishable from perfect.
+
+Sincerely,
+
+The Amazon S3 Team
+
+---
+1. 见书 P573
+2. 原文链接：https://status.aws.amazon.com/s3-20080720.html
